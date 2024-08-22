@@ -36,10 +36,23 @@ class ReferEvaluator(DatasetEvaluator):
 
         self._num_classes = 2
 
+        ######  for decode & translate text  ######
+        import matplotlib.pyplot as plt
+        from matplotlib import font_manager, rc
+        self._font_path = '/SSDe/heeseon/src/GRES/NanumGothic.ttf'
+        self._font_prop = font_manager.FontProperties(fname=self._font_path)
+
+        from transformers import BertTokenizer
+        from googletrans import Translator
+        self._tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self._translator = Translator()
+        ###########################################
+
     def reset(self):
         self._predictions = []
 
     def process(self, inputs, outputs):
+        import matplotlib.pyplot as plt
         for input, output in zip(inputs, outputs):
 
             img_id = input['image_id']
@@ -56,16 +69,58 @@ class ReferEvaluator(DatasetEvaluator):
             output_nt = output["nt_label"].argmax(dim=0).bool().to(self._cpu_device)
             pred_nt = bool(output_nt)
 
+            gt_nt = input.get('empty', False)
+
             self._predictions.append({
                 'img_id': img_id,
                 'source': src,
                 'sent': input['sentence']['raw'],
                 'sent_info':input['sentence'],
                 'pred_nt': pred_nt,
-                'gt_nt': input.get('empty', False),
+                'gt_nt': gt_nt,
                 'pred_mask': pred_mask, 
                 'gt_mask': gt
                 })
+
+            ###########  visualize result  ###########
+            _img = inputs[0]['image']
+            _lang_tokens = inputs[0]['lang_tokens']
+            _decoded_text = self._tokenizer.decode(_lang_tokens[0], skip_special_tokens=True)
+            _korean_text = self._translator.translate(_decoded_text, src='en', dest='ko').text
+            # print(_decoded_text)
+            # print(_korean_text)
+            _img = _img.permute(1, 2, 0).numpy()
+
+            I, U = computeIoU(pred_mask, gt)
+            this_iou = float(0) if U == 0 else float(I) / float(U)
+
+            fig, axes = plt.subplots(1, 3, figsize=(10, 5))
+
+            # 첫 번째 이미지 시각화
+            axes[0].imshow(_img)
+            axes[0].axis('off')  # 축 숨기기
+            axes[0].set_title('Input Image')
+
+            # 두 번째 이미지 시각화
+            axes[1].imshow(_img)
+            axes[1].imshow(gt.squeeze(0), cmap='jet', alpha=0.5)
+            axes[1].axis('off')  # 축 숨기기
+            axes[1].set_title('Ground Truth')
+
+            axes[2].imshow(_img)
+            axes[2].imshow(pred_mask, cmap='jet', alpha=0.5)
+            axes[2].axis('off')  # 축 숨기기
+            axes[2].set_title('GRES')
+
+            plt.suptitle(f'[{img_id}] iou: {round(this_iou, 2)}\n{_decoded_text}\n{_korean_text}', fontproperties=self._font_prop, fontsize=15, y=0.2)
+            plt.savefig(f"output/visualize/{inputs[0]['image_id']}_{input['sentence']['ref_id']}_{input['sentence']['sent_id']}.png", bbox_inches='tight', pad_inches=0.1)
+
+            if this_iou < 0.5:
+                if not (pred_nt and gt_nt):
+                    plt.savefig(f"output/visualize/u50/{inputs[0]['image_id']}_{input['sentence']['ref_id']}_{input['sentence']['sent_id']}.png", bbox_inches='tight', pad_inches=0.1)
+
+
+            #########################################
 
     def evaluate(self):
         if self._distributed:
@@ -79,7 +134,7 @@ class ReferEvaluator(DatasetEvaluator):
 
         if self._output_dir and self._save_imgs:
             PathManager.mkdirs(self._output_dir)
-            file_path = os.path.join(self._output_dir, "ref_seg_predictions.pth")
+            file_path = os.path.join(self._output_dir, "ref_seg_predictions.pkl")
             self._logger.info(f'Saving output images to {file_path} ...')
             with PathManager.open(file_path, "wb") as f:
                 torch.save(predictions, f)

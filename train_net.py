@@ -15,6 +15,9 @@ import copy
 import itertools
 import logging
 import os
+# #########  for debug  #########
+# os.environ["CUDA_VISIBLE_DEVICES"]="5,3"
+# ###############################
 
 from functools import reduce
 import operator
@@ -53,7 +56,7 @@ from gres_model import (
 class Trainer(DefaultTrainer):
 
     @classmethod
-    def build_evaluator(cls, cfg, dataset_name, output_folder=None):
+    def build_evaluator(cls, cfg, dataset_name, output_folder=None, save_imgs=False):
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
             os.makedirs(output_folder, exist_ok=True)
@@ -63,6 +66,7 @@ class Trainer(DefaultTrainer):
                 dataset_name,
                 distributed=True,
                 output_dir=output_folder,
+                save_imgs=save_imgs
             )
         )
         return DatasetEvaluators(evaluator_list)
@@ -211,6 +215,17 @@ def main(args):
 
 if __name__ == "__main__":
     args = default_argument_parser().parse_args()
+
+    # ###########  debug  ###########
+    # args.config_file = 'configs/referring_swin_base.yaml'
+    # args.dist_url = 'auto'
+    # args.eval_only = True
+    # args.opts.append('MODEL.WEIGHTS')
+    # args.opts.append('ckpt/gres_swin_base.pth')
+    # args.opts.append('OUTPUT_DIR')
+    # args.opts.append('output/')
+    # ###############################
+
     print("Command Line Args:", args)
     launch(
         main,

@@ -83,3 +83,8 @@ _darcs
 /output_*
 
 **/ops/lib*.so.*
+
+
+ckpt/*
+work_dirs/*
+output/*
